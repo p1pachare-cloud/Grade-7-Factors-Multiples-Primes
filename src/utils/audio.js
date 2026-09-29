@@ -102,6 +102,9 @@ export function instruct(text) { return { text, style: 'instruction' }; }
 
 export function stopNarration() {
   activeQueueSymbol = Symbol();
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
@@ -110,6 +113,11 @@ export function stopNarration() {
 }
 
 export async function getAudioUrl(text, style = 'statement') {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (audioMap[trimmed]) {
+    return audioMap[trimmed];
+  }
   if (audioMap[text]) {
     return audioMap[text];
   }
@@ -172,6 +180,20 @@ function playAudioFile(url) {
   });
 }
 
+function speakOfflineFallback(text) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      return resolve();
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    utterance.onend = () => resolve();
+    utterance.onerror = () => resolve();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
 export async function narrate(segments, enabled = true, onSegmentStart = null) {
   if (!enabled || !segments || segments.length === 0) return;
   stopNarration();
@@ -194,6 +216,10 @@ export async function narrate(segments, enabled = true, onSegmentStart = null) {
         getAudioUrl(nextSeg.text, nextSeg.style);
       }
       await playAudioFile(url);
+    } else {
+      if (onSegmentStart) onSegmentStart(i);
+      await speakOfflineFallback(seg.text);
     }
   }
 }
+
